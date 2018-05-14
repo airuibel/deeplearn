@@ -1,180 +1,87 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Apr 25 14:56:10 2018
+Created on Fri May 11 19:12:27 2018
 
 @author: sh02060
 """
 
-import pandas as pd
+import numpy as np  
+import dill  
+filename= 'globalsave.pkl'  
+dill.dump_session(filename) 
+##载入数据集  
+dill.load_session(filename)  
+
 import numpy as np
+np.random.seed(1337)  # for reproducibility
+from keras.datasets import mnist
+from keras.models import Sequential
+from keras.layers import Dense, Dropout, Activation, Flatten
+from keras.layers import Convolution2D, MaxPooling2D
+from keras.utils import np_utils
+from keras import backend as K
+from keras.datasets import cifar10
+from keras.utils import np_utils
+from keras.models import Sequential
+from keras.layers import Convolution2D, MaxPooling2D
+from keras.layers import Dense, Dropout, Activation, Flatten
+from keras.optimizers import SGD
+from keras.preprocessing.image import ImageDataGenerator
 import matplotlib.pyplot as plt
-from sklearn.tree import DecisionTreeRegressor
-from sklearn.model_selection import train_test_split
-from time import strptime,mktime
-from datetime import datetime
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import GridSearchCV
-from sklearn import cross_validation, metrics
+import numpy as np
+from sklearn.cross_validation import train_test_split
+X_train, X_test, Y_train, Y_test = train_test_split(j, y, test_size=0.33, random_state=42)
+Y_train = np_utils.to_categorical(Y_train,2)
+Y_test = np_utils.to_categorical(Y_test, 2)
 
-def LogitRR(x):
-    '''
-    :param x: 划款率，有的超过1，有的为0.做截断处理
-    :return: 将还款率转化成logit变换
-    '''
-    if x >= 1:
-        y = 0.9999
-    elif x == 0:
-        y = 0.0001
-    else:
-        y = x
-    return np.log(y/(1-y))
+# 全局变量
+batch_size = 4
+nb_classes = 2
+epochs = 15
+# input image dimensions
+img_rows, img_cols = 28, 28
+# number of convolutional filters to use
+nb_filters = 32
+# size of pooling area for max pooling
+pool_size = (2, 2)
+# convolution kernel size
+kernel_size = (3, 3)
 
-def MakeupMissingCategorical(x):
-    if str(x) == 'nan':
-        return 'Unknown'
-    else:
-        return x
+input_shape = ( img_rows, img_cols,1)
 
-def MakeupMissingNumerical(x,replacement):
-    if np.isnan(x):
-        return replacement
-    else:
-        return x
+#构建模型
+model = Sequential()
 
-'''
-第一步：文件准备
-'''
-foldOfData = 'C:/Users/OkO/Desktop/Financial Data Analsys/3nd Series/Data/'
-mydata = pd.read_csv(r'C:\Users\sh002060\Desktop\C_Card\prosperLoanData_chargedoff.csv',header = 0)
-#催收还款率等于催收金额/（所欠本息+催收费用）。其中催收费用以支出形式表示
-mydata['rec_rate'] = mydata.apply(lambda x: x.LP_NonPrincipalRecoverypayments /(x.AmountDelinquent-x.LP_CollectionFees), axis=1)
-mydata['rec_rate'] = mydata['rec_rate'].map(lambda x: min(x,1))
-#mydata['recovery_status'] = mydata['rec_rate'].map(lambda x: x<=0.5)
-#还款率是0~1之间的数，需要通过logit变换，映射到实数空间
-#mydata['logit_rr'] = mydata['rec_rate'].map(LogitRR)
-#整个开发数据分为训练集、测试集2个部分
-trainData, testData = train_test_split(mydata,test_size=0.4)
-
-'''
-第二步：数据预处理
-'''
-categoricalFeatures = ['CreditGrade','Term','BorrowerState','Occupation','EmploymentStatus','IsBorrowerHomeowner','CurrentlyInGroup','IncomeVerifiable']
-
-numFeatures = ['BorrowerAPR','BorrowerRate','LenderYield','ProsperRating (numeric)','ProsperScore','ListingCategory (numeric)','EmploymentStatusDuration','CurrentCreditLines',
-                'OpenCreditLines','TotalCreditLinespast7years','CreditScoreRangeLower','OpenRevolvingAccounts','OpenRevolvingMonthlyPayment','InquiriesLast6Months','TotalInquiries',
-               'CurrentDelinquencies','DelinquenciesLast7Years','PublicRecordsLast10Years','PublicRecordsLast12Months','BankcardUtilization','TradesNeverDelinquent (percentage)',
-               'TradesOpenedLast6Months','DebtToIncomeRatio','LoanFirstDefaultedCycleNumber','LoanMonthsSinceOrigination','PercentFunded','Recommendations','InvestmentFromFriendsCount',
-               'Investors']
-
-'''
-类别型变量需要用目标变量的均值进行编码
-'''
-encodedFeatures = []
-encodedDict = {}
-for var in categoricalFeatures:
-    trainData[var] = trainData[var].map(MakeupMissingCategorical)
-    avgTarget = trainData.groupby([var])['rec_rate'].mean()
-    avgTarget = avgTarget.to_dict()
-    newVar = var + '_encoded'
-    trainData[newVar] = trainData[var].map(avgTarget)
-    encodedFeatures.append(newVar)
-    encodedDict[var] = avgTarget
-
-#对数值型数据的缺失进行补缺
-trainData['ProsperRating (numeric)'] = trainData['ProsperRating (numeric)'].map(lambda x: MakeupMissingNumerical(x,0))
-trainData['ProsperScore'] = trainData['ProsperScore'].map(lambda x: MakeupMissingNumerical(x,0))
-
-avgDebtToIncomeRatio = np.mean(trainData['DebtToIncomeRatio'])
-trainData['DebtToIncomeRatio'] = trainData['DebtToIncomeRatio'].map(lambda x: MakeupMissingNumerical(x,avgDebtToIncomeRatio))
-numFeatures2 = numFeatures + encodedFeatures
-
-# cls = DecisionTreeRegressor()
-# cls.fit(trainData[numFeatures2], trainData['logit_rr'])
-# trainData['pred'] = cls.predict(trainData[numFeatures2])
-# trainData['less_rr'] = trainData.apply(lambda x: int(x.pred > x.logit_rr), axis=1)
-# np.mean(trainData['less_rr'])
-# err = trainData.apply(lambda x: np.abs(x.pred - x.logit_rr), axis=1)
-# np.mean(err)
-
-
-'''
-第三步：调参
-对基于CART的随机森林的调参，主要有：
-1，树的个数
-2，树的最大深度
-3，内部节点最少样本数与叶节点最少样本数
-4，特征个数
-
-此外，调参过程中选择的误差函数是均值误差，5倍折叠
-'''
-X, y= trainData[numFeatures2],trainData['rec_rate']
-
-param_test1 = {'n_estimators':range(10,80,5)}
-gsearch1 = GridSearchCV(estimator = RandomForestRegressor(min_samples_split=50,min_samples_leaf=10,max_depth=8,max_features='sqrt' ,random_state=10),
-                       param_grid = param_test1, scoring='neg_mean_squared_error',cv=5)
-gsearch1.fit(X,y)
-gsearch1.best_params_, gsearch1.best_score_
-best_n_estimators = gsearch1.best_params_['n_estimators']
-
-param_test2 = {'max_depth':range(3,21), 'min_samples_split':range(10,100,10)}
-gsearch2 = GridSearchCV(estimator = RandomForestRegressor(n_estimators=best_n_estimators, min_samples_leaf=10,max_features='sqrt' ,random_state=10,oob_score=True),
-                       param_grid = param_test2, scoring='neg_mean_squared_error',cv=5)
-gsearch2.fit(X,y)
-gsearch2.best_params_, gsearch2.best_score_
-best_max_depth = gsearch2.best_params_['max_depth']
-best_min_sample_split = gsearch2.best_params_['min_samples_split']
-
-param_test3 = {'min_samples_split':range(50,201,10), 'min_samples_leaf':range(1,20,2)}
-gsearch3 = GridSearchCV(estimator = RandomForestRegressor(n_estimators=best_n_estimators, max_depth = best_max_depth,max_features='sqrt',random_state=10,oob_score=True),
-                       param_grid = param_test3, scoring='neg_mean_squared_error',cv=5)
-gsearch3.fit(X,y)
-gsearch3.best_params_, gsearch3.best_score_
-best_min_samples_leaf = gsearch3.best_params_['min_samples_leaf']
-best_min_samples_split = gsearch3.best_params_['min_samples_split']
-
-numOfFeatures = len(numFeatures2)
-mostSelectedFeatures = numOfFeatures/2
-param_test4 = {'max_features':range(3,numOfFeatures+1)}
-gsearch4 = GridSearchCV(estimator = RandomForestRegressor(n_estimators=best_n_estimators, max_depth=best_max_depth,min_samples_leaf=best_min_samples_leaf,
-                                                          min_samples_split=best_min_samples_split,random_state=10,oob_score=True),
-                       param_grid = param_test4, scoring='neg_mean_squared_error',cv=5)
-gsearch4.fit(X,y)
-gsearch4.best_params_, gsearch4.best_score_
-best_max_features = gsearch4.best_params_['max_features']
-
-cls = RandomForestRegressor(n_estimators=best_n_estimators,
-                            max_depth=best_max_depth,
-                            min_samples_leaf=best_min_samples_leaf,
-                            min_samples_split=best_min_samples_split,
-                            max_features=best_max_features,
-                            random_state=10,
-                            oob_score=True)
-cls.fit(X,y)
-trainData['pred'] = cls.predict(trainData[numFeatures2])
-trainData['less_rr'] = trainData.apply(lambda x: int(x.pred > x.rec_rate), axis=1)
-np.mean(trainData['less_rr'])
-err = trainData.apply(lambda x: np.abs(x.pred - x.rec_rate), axis=1)
-np.mean(err)
-
-
-
-'''
-第四步：在测试集上测试效果
-'''
-
-for var in categoricalFeatures:
-    testData[var] = testData[var].map(MakeupMissingCategorical)
-    newVar = var + '_encoded'
-    testData[newVar] = testData[var].map(encodedDict[var])
-    avgnewVar = np.mean(trainData[newVar])
-    testData[newVar] = testData[newVar].map(lambda x: MakeupMissingNumerical(x, avgnewVar))
-
-testData['ProsperRating (numeric)'] = testData['ProsperRating (numeric)'].map(lambda x: MakeupMissingNumerical(x,0))
-testData['ProsperScore'] = testData['ProsperScore'].map(lambda x: MakeupMissingNumerical(x,0))
-testData['DebtToIncomeRatio'] = testData['DebtToIncomeRatio'].map(lambda x: MakeupMissingNumerical(x,avgDebtToIncomeRatio))
-
-testData['pred'] = cls.predict(testData[numFeatures2])
-testData['less_rr'] = testData.apply(lambda x: int(x.pred > x.rec_rate), axis=1)
-np.mean(testData['less_rr'])
-err = testData.apply(lambda x: np.abs(x.pred - x.rec_rate), axis=1)
-np.mean(err)
+"""
+model.add(Convolution2D(nb_filters, kernel_size[0], kernel_size[1],
+                        border_mode='same',
+                        input_shape=input_shape))
+"""
+model.add(Convolution2D(nb_filters, (kernel_size[0], kernel_size[1]),
+                        padding='same',
+                        input_shape=input_shape)) # 卷积层1
+model.add(Activation('relu')) #激活层
+model.add(Convolution2D(nb_filters, (kernel_size[0], kernel_size[1]))) #卷积层2
+model.add(Activation('relu')) #激活层
+model.add(MaxPooling2D(pool_size=pool_size)) #池化层
+model.add(Dropout(0.25)) #神经元随机失活
+model.add(Flatten()) #拉成一维数据
+model.add(Dense(50)) #全连接层1
+model.add(Activation('relu')) #激活层
+model.add(Dropout(0.25)) #随机失活
+model.add(Dense(2)) #全连接层2
+model.add(Activation('softmax')) #Softmax评分
+sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
+#编译模型
+model.compile(loss='categorical_crossentropy',
+              optimizer=sgd,
+              metrics=['accuracy'])
+#训练模型
+model.fit(X_train, Y_train, batch_size=batch_size, epochs=epochs,
+          verbose=1, validation_data=(X_test, Y_test))
+#评估模型
+score = model.evaluate(X_test, Y_test, verbose=0)
+print('Test score:', score[0])
+print('Test accuracy:', score[1])
+##网络结构
+model.summary()
