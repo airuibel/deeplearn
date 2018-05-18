@@ -8,7 +8,7 @@ Created on Fri May 11 19:12:27 2018
 import numpy as np  
 import dill  
 filename= 'globalsave.pkl'  
-dill.dump_session(filename) 
+#dill.dump_session(filename) 
 ##载入数据集  
 dill.load_session(filename)  
 
